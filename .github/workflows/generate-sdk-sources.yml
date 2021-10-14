@@ -1,0 +1,78 @@
+name: Generate SDK Sources
+
+# Controls when the workflow will run
+on:
+  # Allows this workflow to run manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      apiLevel:
+        description: "API Level"
+        required: true
+        default: "31"
+      branch:
+        description: "https://github.com/aosp-mirror/platform_frameworks_base.git [link](https://github.com/aosp-mirror/platform_frameworks_base.git) aosp-mirror/platform_frameworks_base.git"
+        required: true
+        default: "android-s-beta-5"
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  generate:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-18.04
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      #       - uses: actions/checkout@v2
+
+      - name: Create working directories
+        run: |
+          mkdir android-sdk-source && cd "$_"
+          mkdir -p frameworks/base
+          mkdir -p development
+
+      - name: Fetch the required source code
+        run: |
+          git clone https://github.com/aosp-mirror/platform_frameworks_base.git --branch ${{ github.event.inputs.branch }} --depth 1 frameworks/base
+          git clone https://android.googlesource.com/platform/libcore --branch ${{ github.event.inputs.branch }} --depth 1
+          git clone https://github.com/aosp-mirror/platform_development.git --branch ${{ github.event.inputs.branch }} --depth 1 development
+
+      - name: Create a basic source.properties file
+        run: echo -e "Pkg.UserSrc=false\nPkg.Revision=0\nAndroidVersion.ApiLevel=${{ github.event.inputs.apiLevel }}" > source.properties
+
+      - name: Modify the build script to use "android-${{ github.event.inputs.apiLevel }}" as the top-level directory
+        run: cat development/build/tools/mk_sources_zip.py | sed -e 's/TOP_FOLDER = .*/TOP_FOLDER = "android-${{ github.event.inputs.apiLevel }}"/' > mk_sources_zip.py
+
+      - name: Generate the ZIP package
+        run: python mk_sources_zip.py -z source.properties sources-${{ github.event.inputs.apiLevel }}.zip .
+
+      - name: Get today's date for the tag name
+        id: today
+        run: |
+          echo "::set-output name=date::$(date -I)"
+
+      - name: Create Github Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.event.inputs.apiLevel }}_${{ steps.today.outputs.date }}
+          name: Sources for Android SDK ${{ github.event.inputs.apiLevel }}
+          body: Built from the branch [${{ github.event.inputs.branch }}](https://github.com/aosp-mirror/platform_frameworks_base/tree/${{ github.event.inputs.branch }}) on ${{ steps.today.outputs.date }}.
+          files: sources-*.zip
+          fail_on_unmatched_files: true
+
+      - name: Update Repo Descriptions
+        uses: actions/github-script@v5
+        with:
+          script: |
+            github.rest.repos.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              description: "Android SDK Sources for the upcoming API ${{ github.event.inputs.apiLevel }}.",
+            });
+
+            github.rest.repos.replaceAllTopics({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              names: ["android-studio", "android-sdk", "android-sdk-sources", "api-${{ github.event.inputs.apiLevel }}"]
+            });
