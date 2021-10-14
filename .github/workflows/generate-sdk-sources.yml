@@ -10,7 +10,7 @@ on:
         required: true
         default: "31"
       branch:
-        description: "https://github.com/aosp-mirror/platform_frameworks_base.git [link](https://github.com/aosp-mirror/platform_frameworks_base.git) aosp-mirror/platform_frameworks_base.git"
+        description: "SDK Platform Source Branch Name"
         required: true
         default: "android-s-beta-5"
 
